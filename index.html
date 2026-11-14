@@ -270,7 +270,7 @@ if(SR){
 }
 if(podeCamera) $('gravar').hidden = st.modo!=='lente';
 aplica(); y=inicioY(); desenha();
-if(st.modo==='lente' && podeCamera) avisa('Toque em Gravar para ligar a câmera frontal.', 3500);
+if(st.modo==='lente' && podeCamera) ligaCamera();
 })();
 </script>
 
