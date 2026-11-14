@@ -23,7 +23,7 @@ body.lente{background:#000}
   font-family:var(--read);font-weight:700;font-size:var(--fs,44px);line-height:1.38;white-space:pre-wrap;will-change:transform;text-wrap:pretty}
 body.espelho #texto{transform-origin:center}
 #guia{position:absolute;left:0;right:0;height:2px;background:var(--guide);top:var(--guiaTop,30%);pointer-events:none}
-body.lente #guia{top:calc(var(--banda,34%) * .38)}
+body.lente #guia{top:calc(var(--banda,34%) * .78)}
 #barra{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);
   padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
   display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;transition:transform .25s ease,opacity .25s;z-index:5}
@@ -221,7 +221,7 @@ async function gravar(){
     desenhaQuadro(); clearInterval(laco); laco=setInterval(desenhaQuadro, 33);
     fonte = cv.captureStream(30); stream.getAudioTracks().forEach(k=>fonte.addTrack(k));
   }
-  rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:8_000_000}:{});
+  rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:12_000_000}:{});
   rec.ondataavailable = e=>{ if(e.data.size) partes.push(e.data); };
   rec.onstop = ()=>{
     clearInterval(relogio); clearInterval(laco); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
