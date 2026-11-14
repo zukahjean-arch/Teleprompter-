@@ -117,7 +117,9 @@ Asé.`;
 const guarda = {get(k,d){try{const v=localStorage.getItem('tp-'+k);return v===null?d:v}catch(e){return d}}, set(k,v){try{localStorage.setItem('tp-'+k,v)}catch(e){}}};
 
 let y = 0, lendo = false, ultimo = 0, wake = null;
-const st = {vel:+guarda.get('vel',60), fs:+guarda.get('fs',44), mg:+guarda.get('mg',8), modo:guarda.get('modo','tela'), espelho:guarda.get('espelho','0')==='1'};
+const st = {vel:+guarda.get('vel',60), fs:+guarda.get('fs',44), mg:+guarda.get('mg',8), modo:guarda.get('modo', Math.min(screen.width,screen.height) < 700 ? 'lente' : 'tela'), espelho:guarda.get('espelho','0')==='1'};
+// roteiro vindo do Criador: link com #roteiro=texto (codificado)
+(function(){ try{ const h=location.hash; if(h.startsWith('#roteiro=')){ const t=decodeURIComponent(h.slice(9)).trim(); if(t){ guarda.set('roteiro',t); } history.replaceState(null,'',location.pathname+location.search); } }catch(e){} })();
 texto.textContent = guarda.get('roteiro', EXEMPLO);
 
 function aplica(){
