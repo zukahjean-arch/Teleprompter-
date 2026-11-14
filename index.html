@@ -239,7 +239,10 @@ async function gravar(){
       const w = recortar ? vh*9/16 : vw, sx = recortar ? (vw-w)/2 : 0;
       g.save(); if(espelhaArquivo){ g.translate(cv.width,0); g.scale(-1,1); }
       g.drawImage(v,sx,0,w,vh,0,0,cv.width,cv.height); g.restore(); };
-    desenhaQuadro(); clearInterval(laco); laco=setInterval(desenhaQuadro, 1000/30);
+    desenhaQuadro(); clearInterval(laco);
+    // desenha cada quadro que a câmera entrega (mais fluido); sem esse recurso, cai no relógio de 30 por segundo
+    if(v.requestVideoFrameCallback){ const passo=()=>{ desenhaQuadro(); if(!finalizado) v.requestVideoFrameCallback(passo); }; v.requestVideoFrameCallback(passo); }
+    else { laco=setInterval(desenhaQuadro, 1000/30); }
     fonte = cv.captureStream(30); somAudio.forEach(k=>fonte.addTrack(k));
   }
   rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:12_000_000}:{});
