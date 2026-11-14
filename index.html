@@ -187,20 +187,20 @@ async function ligaCamera(){
   try{
     const empe = window.innerHeight > window.innerWidth;
     const tentativas = [
-      {width:{ideal:1080}, height:{ideal:1920}},
+      {width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9/16}},
       {width:{ideal:1920}, height:{ideal:1080}},
       {aspectRatio:{exact:9/16}}
     ];
     for(const t of tentativas){
-      try{ stream = await navigator.mediaDevices.getUserMedia({video:Object.assign({facingMode:'user', frameRate:{ideal:30}}, t), audio:false}); }catch(e){ if(e.name==='NotAllowedError') throw e; continue; }
+      try{ stream = await navigator.mediaDevices.getUserMedia({video:Object.assign({facingMode:'user', frameRate:{ideal:30}}, t), audio:true}); }catch(e){ if(e.name==='NotAllowedError') throw e; continue; }
       const c = stream.getVideoTracks()[0]?.getSettings?.() || {};
       if(!empe || !c.width || c.height >= c.width) break;
       if(t === tentativas[tentativas.length-1]) break;
       stream.getTracks().forEach(k=>k.stop()); stream = null;
     }
     if(!stream) throw new Error('não consegui abrir a câmera');
-    // sem zoom: se a câmera aceitar ajuste de zoom, deixa no mínimo
-    try{ const tr=stream.getVideoTracks()[0]; const cp=tr.getCapabilities?.()||{}; if(cp.zoom) await tr.applyConstraints({advanced:[{zoom:cp.zoom.min}]}); }catch(e){}
+    // a câmera abre junto com o microfone (assim o iPhone não dá zoom) e o microfone é desligado na hora
+    stream.getAudioTracks().forEach(k=>{ k.stop(); stream.removeTrack(k); });
     const v=$('cam'); v.srcObject=stream; v.hidden=false; await v.play().catch(()=>{});
     const cfg = stream.getVideoTracks()[0]?.getSettings?.() || {};
     // se a câmera ainda vier deitada com o celular em pé, a gravação recorta o centro em pé (9:16)
