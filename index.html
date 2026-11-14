@@ -187,7 +187,7 @@ async function ligaCamera(){
   try{
     const empe = window.innerHeight > window.innerWidth;
     const tentativas = [
-      {width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9/16}},
+      {width:{ideal:1080}, height:{ideal:1920}},
       {width:{ideal:1920}, height:{ideal:1080}},
       {aspectRatio:{exact:9/16}}
     ];
@@ -199,6 +199,8 @@ async function ligaCamera(){
       stream.getTracks().forEach(k=>k.stop()); stream = null;
     }
     if(!stream) throw new Error('não consegui abrir a câmera');
+    // sem zoom: se a câmera aceitar ajuste de zoom, deixa no mínimo
+    try{ const tr=stream.getVideoTracks()[0]; const cp=tr.getCapabilities?.()||{}; if(cp.zoom) await tr.applyConstraints({advanced:[{zoom:cp.zoom.min}]}); }catch(e){}
     const v=$('cam'); v.srcObject=stream; v.hidden=false; await v.play().catch(()=>{});
     const cfg = stream.getVideoTracks()[0]?.getSettings?.() || {};
     // se a câmera ainda vier deitada com o celular em pé, a gravação recorta o centro em pé (9:16)
