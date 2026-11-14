@@ -220,10 +220,18 @@ async function gravar(){
   const somAudio = location.search.includes('semaudio') ? [] : stream.getAudioTracks();
   somAudio.forEach(k=>{ k.enabled=true; });
   let fonte = new MediaStream([...stream.getVideoTracks(), ...somAudio]);
-  if(recortar){
-    const v=$('cam'), cv=document.createElement('canvas'); cv.width=1080; cv.height=1920; const g=cv.getContext('2d');
-    const desenhaQuadro=()=>{ const vw=v.videoWidth, vh=v.videoHeight; if(vw&&vh){ const w=vh*9/16; g.drawImage(v,(vw-w)/2,0,w,vh,0,0,1080,1920); } };
-    desenhaQuadro(); clearInterval(laco); laco=setInterval(desenhaQuadro, 33);
+  // o arquivo sai igual ao que você vê na tela (espelhado, como selfie); com ?semespelho no link sai sem espelhar
+  const espelhaArquivo = !location.search.includes('semespelho');
+  if(recortar || espelhaArquivo){
+    const v=$('cam'), cv=document.createElement('canvas');
+    const vw0=v.videoWidth||1080, vh0=v.videoHeight||1920;
+    if(recortar){ cv.width=1080; cv.height=1920; } else { cv.width=vw0; cv.height=vh0; }
+    const g=cv.getContext('2d');
+    const desenhaQuadro=()=>{ const vw=v.videoWidth, vh=v.videoHeight; if(!vw||!vh) return;
+      const w = recortar ? vh*9/16 : vw, sx = recortar ? (vw-w)/2 : 0;
+      g.save(); if(espelhaArquivo){ g.translate(cv.width,0); g.scale(-1,1); }
+      g.drawImage(v,sx,0,w,vh,0,0,cv.width,cv.height); g.restore(); };
+    desenhaQuadro(); clearInterval(laco); laco=setInterval(desenhaQuadro, 1000/30);
     fonte = cv.captureStream(30); somAudio.forEach(k=>fonte.addTrack(k));
   }
   rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:12_000_000}:{});
