@@ -1,0 +1,250 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"></head><body>
+<title>Teleprompter do Dan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Inter:wght@400;600&display=swap">
+<style>
+/* Layout: tela de leitura escura de ponta a ponta, texto numa coluna que rola, barra de controles que some durante a leitura. Visual único escuro de propósito (leitura em estúdio). */
+:root{
+  --bg:#0b0d10; --panel:#16191e; --line:#2a2f37; --fg:#f3f1ea; --muted:#9aa1ab; --accent:#e0484e; --guide:rgba(224,72,78,.55);
+  --read:'Atkinson Hyperlegible', 'Inter', system-ui, sans-serif; --ui:'Inter', system-ui, sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--ui);overflow:hidden;-webkit-user-select:none;user-select:none}
+#palco{position:fixed;inset:0;overflow:hidden;touch-action:none}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.28}
+#janela{position:absolute;left:0;right:0;top:0;bottom:0;overflow:hidden}
+body.lente #janela{bottom:auto;height:var(--banda,34%);background:linear-gradient(var(--bg) 60%,rgba(11,13,16,.85));border-bottom:1px solid var(--line)}
+#texto{position:absolute;left:0;right:0;top:0;padding-left:max(var(--margem,8%),env(safe-area-inset-left,0px));padding-right:max(var(--margem,8%),env(safe-area-inset-right,0px));
+  font-family:var(--read);font-weight:700;font-size:var(--fs,44px);line-height:1.38;white-space:pre-wrap;will-change:transform;text-wrap:pretty}
+body.espelho #texto{transform-origin:center}
+#guia{position:absolute;left:0;right:0;height:2px;background:var(--guide);top:var(--guiaTop,30%);pointer-events:none}
+body.lente #guia{top:calc(var(--banda,34%) * .38)}
+#barra{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;transition:transform .25s ease,opacity .25s;z-index:5}
+body.lendo #barra{transform:translateY(100%);opacity:0;pointer-events:none}
+button,select,label.btn{font:600 15px var(--ui);color:var(--fg);background:#232830;border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-height:44px;cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.forte{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button.rec{background:var(--accent);border-color:var(--accent);color:#fff}
+.ctl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.ctl input[type=range]{width:110px;accent-color:var(--accent)}
+.grupo{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#editor{position:fixed;inset:0;background:var(--bg);z-index:10;display:flex;flex-direction:column;gap:12px;
+  padding-block:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#editor h1{font:700 22px var(--ui);margin:0;text-wrap:balance}
+#editor p{margin:0;color:var(--muted);font-size:14px;line-height:1.5;max-width:65ch}
+#roteiro{flex:1;min-height:0;width:100%;box-sizing:border-box;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:14px;font:400 17px/1.5 var(--read);-webkit-user-select:text;user-select:text;resize:none}
+#aviso{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
+#ponto{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:8px;align-items:center;font:600 13px var(--ui);z-index:6}
+#ponto i{width:12px;height:12px;border-radius:50%;background:var(--accent);animation:pisca 1s infinite}
+@keyframes pisca{50%{opacity:.25}}
+#contagem{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font:700 120px var(--ui);z-index:8;pointer-events:none}
+#saida{position:fixed;inset:0;z-index:15;background:rgba(11,13,16,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#saida video{max-height:55vh;max-width:100%;border-radius:12px;border:1px solid var(--line)}
+#saida p{color:var(--muted);font-size:14px;text-align:center;max-width:46ch;margin:0}
+@media (prefers-reduced-motion:reduce){#barra{transition:none}#ponto i{animation:none}}
+</style>
+
+<div id="palco" aria-label="Área de leitura. Toque para iniciar ou pausar.">
+  <video id="cam" playsinline muted hidden></video>
+  <div id="janela"><div id="texto"></div><div id="guia"></div></div>
+</div>
+<div id="ponto" hidden><i></i><span id="tempo">00:00</span></div>
+<div id="contagem" hidden></div>
+<div id="aviso" hidden></div>
+
+<div id="barra">
+  <div class="grupo">
+    <button id="play" class="forte">Iniciar</button>
+    <button id="topo">Voltar ao início</button>
+    <button id="editar">Roteiro</button>
+  </div>
+  <div class="ctl"><label for="vel">Velocidade</label><input id="vel" type="range" min="10" max="200" value="60"></div>
+  <div class="ctl"><label for="fs">Letra</label><input id="fs" type="range" min="24" max="110" value="44"></div>
+  <div class="ctl"><label for="mg">Margem</label><input id="mg" type="range" min="2" max="25" value="8"></div>
+  <div class="grupo">
+    <select id="modo" aria-label="Modo">
+      <option value="tela">iPad: tela inteira</option>
+      <option value="lente">Celular: perto da lente</option>
+    </select>
+    <button id="espelho" aria-pressed="false">Espelhar</button>
+    <button id="voz" hidden aria-pressed="false">Seguir minha voz</button>
+    <button id="gravar" class="rec" hidden>Gravar</button>
+  </div>
+</div>
+
+<div id="editor" hidden>
+  <h1>Roteiro</h1>
+  <p>Cole o roteiro aprovado ou abra o arquivo .txt ou .md que o Editor ou o Criador mandou (pasta Roteiros no Drive). Linha em branco separa os blocos. O texto fica guardado só neste aparelho.</p>
+  <div class="grupo">
+    <label class="btn" for="arquivo">Abrir arquivo</label>
+    <input id="arquivo" type="file" accept=".txt,.md,text/plain,text/markdown" hidden>
+    <button id="pronto" class="forte">Usar este roteiro</button>
+  </div>
+  <textarea id="roteiro" aria-label="Texto do roteiro"></textarea>
+</div>
+
+<div id="saida" hidden>
+  <video id="ver" controls playsinline></video>
+  <p id="saidaInfo">Gravação pronta. O arquivo tem só a câmera e o som: o texto e os botões não aparecem nele.</p>
+  <div class="grupo">
+    <button id="salvar" class="forte">Salvar vídeo</button>
+    <button id="descartar">Gravar de novo</button>
+  </div>
+</div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const body = document.body, texto = $('texto'), janela = $('janela');
+const EXEMPLO = `Exemplo para testar (troque em Roteiro).
+
+Mentiras que te contaram sobre o Candomblé: só se inicia quem vira no santo.
+
+Iniciar-se é raspar o seu Orixá e se tornar um ser humano completo, em aliança com ele e com toda a sua ancestralidade.
+
+Ninguém precisa virar, entrar em transe ou em possessão espiritual para ser iniciado.
+
+Você é iniciado porque passou por todas as ritualísticas que precisava passar, não por ter virado ou não no santo.
+
+Se você se iniciou e nunca entrou em transe, fique tranquilo: você não tem menos nem mais Orixá do que ninguém.
+
+Asé.`;
+const guarda = {get(k,d){try{const v=localStorage.getItem('tp-'+k);return v===null?d:v}catch(e){return d}}, set(k,v){try{localStorage.setItem('tp-'+k,v)}catch(e){}}};
+
+let y = 0, lendo = false, ultimo = 0, wake = null;
+const st = {vel:+guarda.get('vel',60), fs:+guarda.get('fs',44), mg:+guarda.get('mg',8), modo:guarda.get('modo','tela'), espelho:guarda.get('espelho','0')==='1'};
+texto.textContent = guarda.get('roteiro', EXEMPLO);
+
+function aplica(){
+  $('vel').value = st.vel; $('fs').value = st.fs; $('mg').value = st.mg; $('modo').value = st.modo;
+  document.documentElement.style.setProperty('--fs', st.fs+'px');
+  document.documentElement.style.setProperty('--margem', st.mg+'%');
+  body.classList.toggle('lente', st.modo==='lente');
+  body.classList.toggle('espelho', st.espelho);
+  $('espelho').setAttribute('aria-pressed', st.espelho);
+  $('espelho').textContent = st.espelho ? 'Espelhado' : 'Espelhar';
+  desenha();
+}
+function desenha(){ texto.style.transform = `translateY(${-y}px)` + (st.espelho ? ' scaleX(-1)' : ''); }
+function inicioY(){ const g = $('guia').offsetTop; return -g; }
+function avisa(t, ms=2600){ const a=$('aviso'); a.textContent=t; a.hidden=false; clearTimeout(avisa.t); avisa.t=setTimeout(()=>a.hidden=true, ms); }
+
+function passo(t){
+  if(!lendo) return;
+  const dt = Math.min(0.1,(t-ultimo)/1000); ultimo = t;
+  y += st.vel*dt;
+  const fim = texto.scrollHeight - $('guia').offsetTop;
+  if(y >= fim){ y = fim; pausa(); avisa('Fim do roteiro'); }
+  desenha(); requestAnimationFrame(passo);
+}
+async function toca(){
+  if(lendo) return; lendo = true; body.classList.add('lendo'); $('play').textContent='Pausar';
+  try{ wake = await navigator.wakeLock?.request('screen'); }catch(e){}
+  ultimo = performance.now(); requestAnimationFrame(passo);
+}
+function pausa(){ lendo = false; body.classList.remove('lendo'); $('play').textContent='Continuar'; try{wake?.release()}catch(e){} wake=null; }
+function alterna(){ lendo ? pausa() : toca(); }
+
+// toque: iniciar ou pausar; arrastar: ajustar a posição
+let toqueY=null, moveu=false;
+$('palco').addEventListener('pointerdown', e=>{ toqueY=e.clientY; moveu=false; });
+$('palco').addEventListener('pointermove', e=>{ if(toqueY===null) return; const d=e.clientY-toqueY; if(Math.abs(d)>6){ moveu=true; y=Math.max(inicioY(), y-d); toqueY=e.clientY; desenha(); }});
+$('palco').addEventListener('pointerup', ()=>{ if(!moveu) alterna(); toqueY=null; });
+$('palco').addEventListener('wheel', e=>{ y=Math.max(inicioY(), y+e.deltaY); desenha(); }, {passive:true});
+document.addEventListener('keydown', e=>{
+  if($('editor').hidden===false) return;
+  if(e.code==='Space'){ e.preventDefault(); alterna(); }
+  if(e.code==='ArrowUp'){ st.vel=Math.min(200,st.vel+5); aplica(); avisa('Velocidade '+st.vel); }
+  if(e.code==='ArrowDown'){ st.vel=Math.max(10,st.vel-5); aplica(); avisa('Velocidade '+st.vel); }
+});
+
+$('play').onclick = alterna;
+$('topo').onclick = ()=>{ pausa(); y=inicioY(); desenha(); $('play').textContent='Iniciar'; };
+$('vel').oninput = e=>{ st.vel=+e.target.value; guarda.set('vel',st.vel); };
+$('fs').oninput = e=>{ st.fs=+e.target.value; guarda.set('fs',st.fs); aplica(); };
+$('mg').oninput = e=>{ st.mg=+e.target.value; guarda.set('mg',st.mg); aplica(); };
+$('modo').onchange = e=>{ st.modo=e.target.value; guarda.set('modo',st.modo); aplica(); y=inicioY(); desenha(); $('gravar').hidden = !(podeCamera && st.modo==='lente'); if(st.modo==='lente') ligaCamera(); };
+$('espelho').onclick = ()=>{ st.espelho=!st.espelho; guarda.set('espelho',st.espelho?'1':'0'); aplica(); };
+$('editar').onclick = ()=>{ pausa(); $('roteiro').value = texto.textContent; $('editor').hidden=false; $('roteiro').focus(); };
+$('pronto').onclick = ()=>{ const t=$('roteiro').value.trim()||EXEMPLO; texto.textContent=t; guarda.set('roteiro',t); $('editor').hidden=true; y=inicioY(); desenha(); $('play').textContent='Iniciar'; };
+$('arquivo').onchange = e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('roteiro').value=String(r.result).replace(/^#+\s*/gm,''); }; r.readAsText(f); };
+
+// câmera e gravação: só onde o navegador deixa (página própria em https; dentro do Claude é bloqueado)
+let camInfo='', stream=null, rec=null, partes=[], blob=null, t0=0, relogio=null;
+const dentroDoClaude = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
+const podeCamera = !dentroDoClaude && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+async function ligaCamera(){
+  if(stream || !podeCamera) { if(!podeCamera && st.modo==='lente') avisa('Aqui não dá para gravar: abra a versão da página no Safari (ver o passo a passo).', 4200); return !!stream; }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:1080}, height:{ideal:1920}, frameRate:{ideal:30}}, audio: location.search.includes('semaudio') ? false : {echoCancellation:false, noiseSuppression:false}});
+    const v=$('cam'); v.srcObject=stream; v.hidden=false; await v.play().catch(()=>{});
+    const cfg = stream.getVideoTracks()[0]?.getSettings?.() || {};
+    camInfo = `${cfg.width||'?'} x ${cfg.height||'?'}, ${Math.round(cfg.frameRate||0)||'?'} quadros/s`;
+    avisa('Câmera frontal ligada: ' + camInfo, 4000);
+    $('gravar').hidden=false; return true;
+  }catch(e){ avisa('Câmera não liberada: '+(e.name==='NotAllowedError'?'permita câmera e microfone nos ajustes do Safari para este site.':e.message), 5000); return false; }
+}
+function tipo(){ for(const t of ['video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm']) if(MediaRecorder.isTypeSupported?.(t)) return t; return ''; }
+async function gravar(){
+  if(rec && rec.state==='recording'){ rec.stop(); return; }
+  if(!await ligaCamera()) return;
+  partes=[]; const mt=tipo();
+  rec = new MediaRecorder(stream, mt?{mimeType:mt, videoBitsPerSecond:8_000_000}:{});
+  rec.ondataavailable = e=>{ if(e.data.size) partes.push(e.data); };
+  rec.onstop = ()=>{
+    clearInterval(relogio); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
+    blob = new Blob(partes, {type: rec.mimeType || mt || 'video/mp4'});
+    $('ver').src = URL.createObjectURL(blob);
+    $('saidaInfo').textContent = `Gravação pronta (${(blob.size/1e6).toFixed(1)} MB, ${blob.type.split(';')[0]}, câmera ${camInfo}). O arquivo tem só a câmera e o som: o texto e os botões não aparecem nele.`;
+    $('ver').onloadedmetadata = ()=>{ $('saidaInfo').textContent += ` Resolução do arquivo: ${$('ver').videoWidth} x ${$('ver').videoHeight}.`; };
+    $('saida').hidden=false;
+  };
+  // contagem de 3 s antes de gravar e rolar
+  const c=$('contagem'); c.hidden=false;
+  for(const n of [3,2,1]){ c.textContent=n; await new Promise(r=>setTimeout(r,800)); }
+  c.hidden=true;
+  rec.start(1000); t0=Date.now(); $('ponto').hidden=false; $('gravar').textContent='Parar';
+  relogio=setInterval(()=>{ const s=Math.floor((Date.now()-t0)/1000); $('tempo').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); },500);
+  toca();
+}
+$('gravar').onclick = gravar;
+// durante a gravação a barra some; tocar na tela pausa só a rolagem. Botão Parar fica no canto.
+$('ponto').addEventListener('click', ()=>{ if(rec?.state==='recording') rec.stop(); });
+$('ponto').style.cursor='pointer'; $('ponto').title='Parar gravação';
+$('descartar').onclick = ()=>{ $('saida').hidden=true; blob=null; y=inicioY(); desenha(); };
+$('salvar').onclick = async ()=>{
+  if(!blob) return;
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const nome = 'gravacao-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'-') + '.' + ext;
+  const f = new File([blob], nome, {type: blob.type.split(';')[0]});
+  try{ if(navigator.canShare?.({files:[f]})){ await navigator.share({files:[f]}); return; } }catch(e){ if(e.name==='AbortError') return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+};
+
+// seguir a voz (só onde o navegador tem reconhecimento de fala): avança quando você fala, para quando você para
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if(SR){
+  $('voz').hidden=false; let sr=null, ativo=false, ultimaFala=0;
+  $('voz').onclick = ()=>{
+    ativo=!ativo; $('voz').setAttribute('aria-pressed',ativo); $('voz').textContent = ativo?'Voz ligada':'Seguir minha voz';
+    if(ativo){ try{ sr=new SR(); sr.lang='pt-BR'; sr.continuous=true; sr.interimResults=true;
+      sr.onresult=()=>{ ultimaFala=Date.now(); if(!lendo) toca(); };
+      sr.onend=()=>{ if(ativo) try{sr.start()}catch(e){} };
+      sr.start();
+      (function vigia(){ if(!ativo) return; if(lendo && Date.now()-ultimaFala>1800) pausa(); setTimeout(vigia,300); })();
+    }catch(e){ avisa('Reconhecimento de voz indisponível aqui.'); ativo=false; } }
+    else { try{sr?.stop()}catch(e){} }
+  };
+}
+if(podeCamera) $('gravar').hidden = st.modo!=='lente';
+aplica(); y=inicioY(); desenha();
+if(st.modo==='lente' && podeCamera) avisa('Toque em Gravar para ligar a câmera frontal.', 3500);
+})();
+</script>
+
+</body></html>
