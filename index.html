@@ -14,7 +14,7 @@ html,body{height:100%}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--ui);overflow:hidden;-webkit-user-select:none;user-select:none}
 #palco{position:fixed;inset:0;overflow:hidden;touch-action:none}
-#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.28}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:1;background:#000}
 #janela{position:absolute;left:0;right:0;top:0;bottom:0;overflow:hidden}
 body.lente #janela{bottom:auto;height:var(--banda,34%);background:linear-gradient(var(--bg) 60%,rgba(11,13,16,.85));border-bottom:1px solid var(--line)}
 #texto{position:absolute;left:0;right:0;top:0;padding-left:max(var(--margem,8%),env(safe-area-inset-left,0px));padding-right:max(var(--margem,8%),env(safe-area-inset-right,0px));
@@ -177,15 +177,31 @@ $('pronto').onclick = ()=>{ const t=$('roteiro').value.trim()||EXEMPLO; texto.te
 $('arquivo').onchange = e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('roteiro').value=String(r.result).replace(/^#+\s*/gm,''); }; r.readAsText(f); };
 
 // câmera e gravação: só onde o navegador deixa (página própria em https; dentro do Claude é bloqueado)
-let camInfo='', stream=null, rec=null, partes=[], blob=null, t0=0, relogio=null;
+let recortar=false, laco=null, camInfo='', stream=null, rec=null, partes=[], blob=null, t0=0, relogio=null;
 const dentroDoClaude = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
 const podeCamera = !dentroDoClaude && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 async function ligaCamera(){
   if(stream || !podeCamera) { if(!podeCamera && st.modo==='lente') avisa('Aqui não dá para gravar: abra a versão da página no Safari (ver o passo a passo).', 4200); return !!stream; }
   try{
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:1080}, height:{ideal:1920}, frameRate:{ideal:30}}, audio: location.search.includes('semaudio') ? false : {echoCancellation:false, noiseSuppression:false}});
+    const audio = location.search.includes('semaudio') ? false : {echoCancellation:false, noiseSuppression:false};
+    const empe = window.innerHeight > window.innerWidth;
+    const tentativas = [
+      {width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9/16}},
+      {width:{ideal:1920}, height:{ideal:1080}},
+      {aspectRatio:{exact:9/16}}
+    ];
+    for(const t of tentativas){
+      try{ stream = await navigator.mediaDevices.getUserMedia({video:Object.assign({facingMode:'user', frameRate:{ideal:30}}, t), audio}); }catch(e){ if(e.name==='NotAllowedError') throw e; continue; }
+      const c = stream.getVideoTracks()[0]?.getSettings?.() || {};
+      if(!empe || !c.width || c.height >= c.width) break;
+      if(t === tentativas[tentativas.length-1]) break;
+      stream.getTracks().forEach(k=>k.stop()); stream = null;
+    }
+    if(!stream) throw new Error('não consegui abrir a câmera');
     const v=$('cam'); v.srcObject=stream; v.hidden=false; await v.play().catch(()=>{});
     const cfg = stream.getVideoTracks()[0]?.getSettings?.() || {};
+    // se a câmera ainda vier deitada com o celular em pé, a gravação recorta o centro em pé (9:16)
+    recortar = empe && cfg.width && cfg.width > cfg.height;
     camInfo = `${cfg.width||'?'} x ${cfg.height||'?'}, ${Math.round(cfg.frameRate||0)||'?'} quadros/s`;
     avisa('Câmera frontal ligada: ' + camInfo, 4000);
     $('gravar').hidden=false; return true;
@@ -196,10 +212,17 @@ async function gravar(){
   if(rec && rec.state==='recording'){ rec.stop(); return; }
   if(!await ligaCamera()) return;
   partes=[]; const mt=tipo();
-  rec = new MediaRecorder(stream, mt?{mimeType:mt, videoBitsPerSecond:8_000_000}:{});
+  let fonte = stream;
+  if(recortar){
+    const v=$('cam'), cv=document.createElement('canvas'); cv.width=1080; cv.height=1920; const g=cv.getContext('2d');
+    const desenhaQuadro=()=>{ const vw=v.videoWidth, vh=v.videoHeight; if(vw&&vh){ const w=vh*9/16; g.drawImage(v,(vw-w)/2,0,w,vh,0,0,1080,1920); } };
+    desenhaQuadro(); clearInterval(laco); laco=setInterval(desenhaQuadro, 33);
+    fonte = cv.captureStream(30); stream.getAudioTracks().forEach(k=>fonte.addTrack(k));
+  }
+  rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:8_000_000}:{});
   rec.ondataavailable = e=>{ if(e.data.size) partes.push(e.data); };
   rec.onstop = ()=>{
-    clearInterval(relogio); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
+    clearInterval(relogio); clearInterval(laco); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
     blob = new Blob(partes, {type: rec.mimeType || mt || 'video/mp4'});
     $('ver').src = URL.createObjectURL(blob);
     $('saidaInfo').textContent = `Gravação pronta (${(blob.size/1e6).toFixed(1)} MB, ${blob.type.split(';')[0]}, câmera ${camInfo}). O arquivo tem só a câmera e o som: o texto e os botões não aparecem nele.`;
