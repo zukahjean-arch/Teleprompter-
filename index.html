@@ -229,7 +229,8 @@ async function gravar(){
   rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:12_000_000}:{});
   rec.ondataavailable = e=>{ if(e.data.size) partes.push(e.data); };
   rec.onstop = ()=>{
-    if(stream) stream.getAudioTracks().forEach(k=>{ k.enabled=false; });
+    // terminou de gravar: desliga câmera e microfone de vez; eles voltam quando você sai da tela de salvar
+    setTimeout(()=>{ if(stream){ stream.getTracks().forEach(k=>k.stop()); stream=null; } }, 300);
     clearInterval(relogio); clearInterval(laco); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
     blob = new Blob(partes, {type: rec.mimeType || mt || 'video/mp4'});
     $('ver').src = URL.createObjectURL(blob);
@@ -249,7 +250,7 @@ $('gravar').onclick = gravar;
 // durante a gravação a barra some; tocar na tela pausa só a rolagem. Botão Parar fica no canto.
 $('ponto').addEventListener('click', ()=>{ if(rec?.state==='recording') rec.stop(); });
 $('ponto').style.cursor='pointer'; $('ponto').title='Parar gravação';
-function fechaSaida(msg){ const v=$('ver'); try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} $('saida').hidden=true; blob=null; y=inicioY(); desenha(); if(stream) stream.getAudioTracks().forEach(k=>{ k.enabled=false; }); if(msg) avisa(msg, 2500); }
+function fechaSaida(msg){ const v=$('ver'); try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} $('saida').hidden=true; blob=null; y=inicioY(); desenha(); if(msg) avisa(msg, 2500); if(st.modo==='lente' && podeCamera) ligaCamera(); }
 $('descartar').onclick = ()=>fechaSaida();
 $('salvar').onclick = async ()=>{
   if(!blob) return;
