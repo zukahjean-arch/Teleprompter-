@@ -179,7 +179,7 @@ $('pronto').onclick = ()=>{ const t=$('roteiro').value.trim()||EXEMPLO; texto.te
 $('arquivo').onchange = e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('roteiro').value=String(r.result).replace(/^#+\s*/gm,''); }; r.readAsText(f); };
 
 // câmera e gravação: só onde o navegador deixa (página própria em https; dentro do Claude é bloqueado)
-let mic=null, recortar=false, laco=null, camInfo='', stream=null, rec=null, partes=[], blob=null, t0=0, relogio=null;
+let fonteAtual=null, finalizado=true, finaliza=()=>{}, mic=null, recortar=false, laco=null, camInfo='', stream=null, rec=null, partes=[], blob=null, t0=0, relogio=null;
 const dentroDoClaude = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
 const podeCamera = !dentroDoClaude && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 async function ligaCamera(){
@@ -212,7 +212,15 @@ async function ligaCamera(){
 }
 function tipo(){ for(const t of ['video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm']) if(MediaRecorder.isTypeSupported?.(t)) return t; return ''; }
 async function gravar(){
-  if(rec && rec.state==='recording'){ rec.stop(); return; }
+  if(rec && rec.state==='recording'){
+    // parar: encerra na hora; se o iPhone demorar a fechar o arquivo, fecha com o que já foi gravado
+    clearInterval(relogio); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
+    try{ rec.requestData?.(); }catch(e){}
+    try{ rec.stop(); }catch(e){}
+    setTimeout(()=>{ try{ fonteAtual && fonteAtual.getVideoTracks().forEach(k=>k.stop()); }catch(e){} }, 400);
+    setTimeout(()=>{ if(!finalizado) finaliza(); }, 2500);
+    return;
+  }
   if(!await ligaCamera()) return;
   partes=[]; const mt=tipo();
   // o microfone só liga na hora de gravar e desliga quando a gravação para
@@ -236,7 +244,9 @@ async function gravar(){
   }
   rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:12_000_000}:{});
   rec.ondataavailable = e=>{ if(e.data.size) partes.push(e.data); };
-  rec.onstop = ()=>{
+  fonteAtual = fonte; finalizado = false;
+  finaliza = ()=>{
+    if(finalizado) return; finalizado = true;
     // terminou de gravar: desliga câmera e microfone de vez; eles voltam quando você sai da tela de salvar
     setTimeout(()=>{ if(stream){ stream.getTracks().forEach(k=>k.stop()); stream=null; } }, 300);
     clearInterval(relogio); clearInterval(laco); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
@@ -246,6 +256,7 @@ async function gravar(){
     $('ver').onloadedmetadata = ()=>{ $('saidaInfo').textContent += ` Resolução do arquivo: ${$('ver').videoWidth} x ${$('ver').videoHeight}.`; };
     $('saida').hidden=false;
   };
+  rec.onstop = ()=>finaliza();
   // contagem de 3 s antes de gravar e rolar
   const c=$('contagem'); c.hidden=false;
   for(const n of [3,2,1]){ c.textContent=n; await new Promise(r=>setTimeout(r,800)); }
