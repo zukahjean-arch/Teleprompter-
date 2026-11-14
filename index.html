@@ -249,14 +249,15 @@ $('gravar').onclick = gravar;
 // durante a gravação a barra some; tocar na tela pausa só a rolagem. Botão Parar fica no canto.
 $('ponto').addEventListener('click', ()=>{ if(rec?.state==='recording') rec.stop(); });
 $('ponto').style.cursor='pointer'; $('ponto').title='Parar gravação';
-$('descartar').onclick = ()=>{ $('saida').hidden=true; blob=null; y=inicioY(); desenha(); };
+function fechaSaida(msg){ const v=$('ver'); try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} $('saida').hidden=true; blob=null; y=inicioY(); desenha(); if(mic){ mic.getTracks().forEach(k=>k.stop()); mic=null; } if(msg) avisa(msg, 2500); }
+$('descartar').onclick = ()=>fechaSaida();
 $('salvar').onclick = async ()=>{
   if(!blob) return;
   const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
   const nome = 'gravacao-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'-') + '.' + ext;
   const f = new File([blob], nome, {type: blob.type.split(';')[0]});
-  try{ if(navigator.canShare?.({files:[f]})){ await navigator.share({files:[f]}); return; } }catch(e){ if(e.name==='AbortError') return; }
-  const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+  try{ if(navigator.canShare?.({files:[f]})){ await navigator.share({files:[f]}); fechaSaida('Vídeo salvo. Pronto para gravar de novo.'); return; } }catch(e){ if(e.name==='AbortError') return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>fechaSaida('Vídeo salvo. Pronto para gravar de novo.'), 800);
 };
 
 // seguir a voz (só onde o navegador tem reconhecimento de fala): avança quando você fala, para quando você para
