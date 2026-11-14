@@ -179,13 +179,12 @@ $('pronto').onclick = ()=>{ const t=$('roteiro').value.trim()||EXEMPLO; texto.te
 $('arquivo').onchange = e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('roteiro').value=String(r.result).replace(/^#+\s*/gm,''); }; r.readAsText(f); };
 
 // câmera e gravação: só onde o navegador deixa (página própria em https; dentro do Claude é bloqueado)
-let recortar=false, laco=null, camInfo='', stream=null, rec=null, partes=[], blob=null, t0=0, relogio=null;
+let mic=null, recortar=false, laco=null, camInfo='', stream=null, rec=null, partes=[], blob=null, t0=0, relogio=null;
 const dentroDoClaude = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
 const podeCamera = !dentroDoClaude && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 async function ligaCamera(){
   if(stream || !podeCamera) { if(!podeCamera && st.modo==='lente') avisa('Aqui não dá para gravar: abra a versão da página no Safari (ver o passo a passo).', 4200); return !!stream; }
   try{
-    const audio = location.search.includes('semaudio') ? false : {echoCancellation:false, noiseSuppression:false};
     const empe = window.innerHeight > window.innerWidth;
     const tentativas = [
       {width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9/16}},
@@ -193,7 +192,7 @@ async function ligaCamera(){
       {aspectRatio:{exact:9/16}}
     ];
     for(const t of tentativas){
-      try{ stream = await navigator.mediaDevices.getUserMedia({video:Object.assign({facingMode:'user', frameRate:{ideal:30}}, t), audio}); }catch(e){ if(e.name==='NotAllowedError') throw e; continue; }
+      try{ stream = await navigator.mediaDevices.getUserMedia({video:Object.assign({facingMode:'user', frameRate:{ideal:30}}, t), audio:false}); }catch(e){ if(e.name==='NotAllowedError') throw e; continue; }
       const c = stream.getVideoTracks()[0]?.getSettings?.() || {};
       if(!empe || !c.width || c.height >= c.width) break;
       if(t === tentativas[tentativas.length-1]) break;
@@ -214,16 +213,23 @@ async function gravar(){
   if(rec && rec.state==='recording'){ rec.stop(); return; }
   if(!await ligaCamera()) return;
   partes=[]; const mt=tipo();
-  let fonte = stream;
+  // o microfone só liga na hora de gravar e desliga quando a gravação para
+  mic = null;
+  if(!location.search.includes('semaudio')){
+    try{ mic = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false}, video:false}); }
+    catch(e){ avisa('Microfone não liberado: permita o microfone nos ajustes do Safari para este site.', 5000); return; }
+  }
+  let fonte = new MediaStream([...stream.getVideoTracks(), ...(mic?mic.getAudioTracks():[])]);
   if(recortar){
     const v=$('cam'), cv=document.createElement('canvas'); cv.width=1080; cv.height=1920; const g=cv.getContext('2d');
     const desenhaQuadro=()=>{ const vw=v.videoWidth, vh=v.videoHeight; if(vw&&vh){ const w=vh*9/16; g.drawImage(v,(vw-w)/2,0,w,vh,0,0,1080,1920); } };
     desenhaQuadro(); clearInterval(laco); laco=setInterval(desenhaQuadro, 33);
-    fonte = cv.captureStream(30); stream.getAudioTracks().forEach(k=>fonte.addTrack(k));
+    fonte = cv.captureStream(30); if(mic) mic.getAudioTracks().forEach(k=>fonte.addTrack(k));
   }
   rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:12_000_000}:{});
   rec.ondataavailable = e=>{ if(e.data.size) partes.push(e.data); };
   rec.onstop = ()=>{
+    if(mic){ mic.getTracks().forEach(k=>k.stop()); mic=null; }
     clearInterval(relogio); clearInterval(laco); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
     blob = new Blob(partes, {type: rec.mimeType || mt || 'video/mp4'});
     $('ver').src = URL.createObjectURL(blob);
@@ -272,6 +278,16 @@ if(podeCamera) $('gravar').hidden = st.modo!=='lente';
 aplica(); y=inicioY(); desenha();
 if(st.modo==='lente' && podeCamera) ligaCamera();
 })();
+
+// ao sair da página ou trocar de app, desliga câmera e microfone; ao voltar, religa a câmera
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    if(rec && rec.state==='recording') return;
+    if(mic){ mic.getTracks().forEach(k=>k.stop()); mic=null; }
+    if(stream){ stream.getTracks().forEach(k=>k.stop()); stream=null; }
+  } else if(st.modo==='lente' && podeCamera){ ligaCamera(); }
+});
+window.addEventListener('pagehide', ()=>{ [mic,stream].forEach(x=>x&&x.getTracks().forEach(k=>k.stop())); });
 </script>
 
 </body></html>
