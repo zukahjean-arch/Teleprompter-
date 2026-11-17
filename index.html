@@ -95,6 +95,7 @@ button.rec{background:var(--accent);border-color:var(--accent);color:#fff}
   <p id="saidaInfo">Gravação pronta. O arquivo tem só a câmera e o som: o texto e os botões não aparecem nele.</p>
   <div class="grupo">
     <button id="salvar" class="forte">Salvar vídeo</button>
+    <button id="abrirVideo">Abrir o vídeo</button>
     <button id="descartar">Gravar de novo</button>
   </div>
 </div>
@@ -218,7 +219,7 @@ async function gravar(){
     try{ rec.requestData?.(); }catch(e){}
     try{ rec.stop(); }catch(e){}
     setTimeout(()=>{ try{ fonteAtual && fonteAtual.getVideoTracks().forEach(k=>k.stop()); }catch(e){} }, 400);
-    setTimeout(()=>{ if(!finalizado) finaliza(); }, 2500);
+    setTimeout(()=>{ if(!finalizado) finaliza(); }, 6000);
     return;
   }
   if(!await ligaCamera()) return;
@@ -245,7 +246,7 @@ async function gravar(){
     else { laco=setInterval(desenhaQuadro, 1000/30); }
     fonte = cv.captureStream(30); somAudio.forEach(k=>fonte.addTrack(k));
   }
-  rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:12_000_000}:{});
+  rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:6_000_000}:{});
   rec.ondataavailable = e=>{ if(e.data.size) partes.push(e.data); };
   fonteAtual = fonte; finalizado = false;
   finaliza = ()=>{
@@ -275,12 +276,23 @@ $('ponto').style.cursor='pointer'; $('ponto').title='Parar gravação';
 function fechaSaida(msg){ const v=$('ver'); try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} $('saida').hidden=true; blob=null; y=inicioY(); desenha(); if(msg) avisa(msg, 2500); if(st.modo==='lente' && podeCamera) ligaCamera(); }
 $('descartar').onclick = ()=>fechaSaida();
 $('salvar').onclick = async ()=>{
-  if(!blob) return;
+  if(!blob){ avisa('A gravação não está mais aqui. Grave de novo.', 4000); return; }
   const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
   const nome = 'gravacao-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'-') + '.' + ext;
   const f = new File([blob], nome, {type: blob.type.split(';')[0]});
-  try{ if(navigator.canShare?.({files:[f]})){ await navigator.share({files:[f]}); fechaSaida('Vídeo salvo. Pronto para gravar de novo.'); return; } }catch(e){ if(e.name==='AbortError') return; }
-  const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>fechaSaida('Vídeo salvo. Pronto para gravar de novo.'), 800);
+  if(navigator.canShare?.({files:[f]})){
+    try{ await navigator.share({files:[f]}); $('saidaInfo').textContent='Enviado. Confira no app Fotos ou em Arquivos. Se não estiver lá, toque em Abrir o vídeo. A gravação continua aqui até você tocar em Gravar de novo.'; return; }
+    catch(e){ if(e.name==='AbortError') return; $('saidaInfo').textContent='O iPhone não conseguiu salvar ('+e.name+': '+e.message+'). Toque em Abrir o vídeo e salve pelo botão de compartilhar do player. A gravação continua aqui.'; return; }
+  }
+  // sem a tela de compartilhar: baixa o arquivo e NÃO apaga a gravação, para poder tentar de novo
+  const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+  $('saidaInfo').textContent='Baixando para Arquivos, pasta Downloads. Se não aparecer, toque em Abrir o vídeo. A gravação continua aqui até você tocar em Gravar de novo.';
+};
+$('abrirVideo').onclick = ()=>{
+  if(!blob){ avisa('A gravação não está mais aqui. Grave de novo.', 4000); return; }
+  const u=URL.createObjectURL(blob); const w=window.open(u,'_blank');
+  if(!w) location.href=u;
+  avisa('No vídeo que abriu, toque no botão de compartilhar e em Salvar vídeo.', 6000);
 };
 
 // seguir a voz (só onde o navegador tem reconhecimento de fala): avança quando você fala, para quando você para
