@@ -1,0 +1,608 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"></head><body>
+<title>Teleprompter do Dan · Beleza (teste)</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Inter:wght@400;600&display=swap">
+<style>
+/* Layout: tela de leitura escura de ponta a ponta, texto numa coluna que rola, barra de controles que some durante a leitura. Visual único escuro de propósito (leitura em estúdio). */
+:root{
+  --bg:#0b0d10; --panel:#16191e; --line:#2a2f37; --fg:#f3f1ea; --muted:#9aa1ab; --accent:#e0484e; --guide:rgba(224,72,78,.55);
+  --read:'Atkinson Hyperlegible', 'Inter', system-ui, sans-serif; --ui:'Inter', system-ui, sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--ui);overflow:hidden;-webkit-user-select:none;user-select:none}
+#palco{position:fixed;inset:0;overflow:hidden;touch-action:none}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:1;background:#000}
+#gl{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);background:#000}
+body.comgl #cam{opacity:0}
+#painelBeleza{position:fixed;left:0;right:0;bottom:0;z-index:12;background:var(--panel);border-top:1px solid var(--line);
+  padding:14px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 18px;max-height:62vh;overflow:auto}
+#painelBeleza .ctl{flex-direction:column;align-items:stretch;gap:4px}
+#painelBeleza .ctl input[type=range]{width:100%}
+#painelBeleza .ctl span{display:flex;justify-content:space-between}
+#painelBeleza .acoes{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+#janela{position:absolute;left:0;right:0;top:0;bottom:0;overflow:hidden}
+body.lente #janela{bottom:auto;height:var(--banda,34%);background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.35) 75%,rgba(0,0,0,0));border-bottom:0}
+body.lente #texto{text-shadow:0 2px 6px rgba(0,0,0,.9),0 0 2px rgba(0,0,0,.9)}
+body.lente{background:#000}
+#texto{position:absolute;left:0;right:0;top:0;padding-left:max(var(--margem,8%),env(safe-area-inset-left,0px));padding-right:max(var(--margem,8%),env(safe-area-inset-right,0px));
+  font-family:var(--read);font-weight:700;font-size:var(--fs,44px);line-height:1.38;white-space:pre-wrap;will-change:transform;text-wrap:pretty}
+body.espelho #texto{transform-origin:center}
+#guia{position:absolute;left:0;right:0;height:2px;background:var(--guide);top:var(--guiaTop,30%);pointer-events:none}
+body.lente #guia{top:calc(var(--banda,34%) * .78);opacity:0}
+#barra{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;transition:transform .25s ease,opacity .25s;z-index:5}
+body.lendo #barra{transform:translateY(100%);opacity:0;pointer-events:none}
+button,select,label.btn{font:600 15px var(--ui);color:var(--fg);background:#232830;border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-height:44px;cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.forte{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button.rec{background:var(--accent);border-color:var(--accent);color:#fff}
+.ctl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.ctl input[type=range]{width:110px;accent-color:var(--accent)}
+.grupo{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#editor{position:fixed;inset:0;background:var(--bg);z-index:10;display:flex;flex-direction:column;gap:12px;
+  padding-block:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#editor h1{font:700 22px var(--ui);margin:0;text-wrap:balance}
+#editor p{margin:0;color:var(--muted);font-size:14px;line-height:1.5;max-width:65ch}
+#roteiro{flex:1;min-height:0;width:100%;box-sizing:border-box;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:14px;font:400 17px/1.5 var(--read);-webkit-user-select:text;user-select:text;resize:none}
+#aviso{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
+#ponto{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:8px;align-items:center;font:600 13px var(--ui);z-index:6}
+#ponto i{width:12px;height:12px;border-radius:50%;background:var(--accent);animation:pisca 1s infinite}
+@keyframes pisca{50%{opacity:.25}}
+#contagem{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font:700 120px var(--ui);z-index:8;pointer-events:none}
+#saida{position:fixed;inset:0;z-index:15;background:rgba(11,13,16,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#saida video{max-height:55vh;max-width:100%;border-radius:12px;border:1px solid var(--line)}
+#saida p{color:var(--muted);font-size:14px;text-align:center;max-width:46ch;margin:0}
+@media (prefers-reduced-motion:reduce){#barra{transition:none}#ponto i{animation:none}}
+</style>
+
+<div id="palco" aria-label="Área de leitura. Toque para iniciar ou pausar.">
+  <video id="cam" playsinline muted hidden></video>
+  <div id="glLugar"></div>
+  <div id="janela"><div id="texto"></div><div id="guia"></div></div>
+</div>
+<div id="ponto" hidden><i></i><span id="tempo">00:00</span></div>
+<div id="contagem" hidden></div>
+<div id="aviso" hidden></div>
+
+<div id="barra">
+  <div class="grupo">
+    <button id="play" class="forte">Iniciar</button>
+    <button id="topo">Voltar ao início</button>
+    <button id="editar">Roteiro</button>
+  </div>
+  <div class="ctl"><label for="vel">Velocidade</label><input id="vel" type="range" min="10" max="200" value="60"></div>
+  <div class="ctl"><label for="fs">Letra</label><input id="fs" type="range" min="24" max="110" value="44"></div>
+  <div class="ctl"><label for="mg">Margem</label><input id="mg" type="range" min="2" max="25" value="8"></div>
+  <div class="grupo">
+    <select id="modo" aria-label="Modo">
+      <option value="tela">iPad: tela inteira</option>
+      <option value="lente">Celular: perto da lente</option>
+    </select>
+    <button id="espelho" aria-pressed="false">Espelhar</button>
+    <button id="beleza">Beleza</button>
+    <button id="voz" hidden aria-pressed="false">Seguir minha voz</button>
+    <button id="gravar" class="rec" hidden>Gravar</button>
+  </div>
+</div>
+
+<div id="painelBeleza" hidden>
+  <div class="acoes"><strong style="font:700 16px var(--ui);margin-right:auto;align-self:center">Beleza ao vivo</strong>
+    <button id="bLigado" aria-pressed="true">Ligado</button>
+    <button id="bAntes">Segure para ver sem</button>
+    <button id="bZerar">Voltar ao padrão</button>
+    <button id="bFechar" class="forte">Fechar</button></div>
+</div>
+<div id="editor" hidden>
+  <h1>Roteiro</h1>
+  <p>Cole o roteiro aprovado ou abra o arquivo .txt ou .md que o Editor ou o Criador mandou (pasta Roteiros no Drive). Linha em branco separa os blocos. O texto fica guardado só neste aparelho.</p>
+  <div class="grupo">
+    <label class="btn" for="arquivo">Abrir arquivo</label>
+    <input id="arquivo" type="file" accept=".txt,.md,text/plain,text/markdown" hidden>
+    <button id="pronto" class="forte">Usar este roteiro</button>
+  </div>
+  <textarea id="roteiro" aria-label="Texto do roteiro"></textarea>
+</div>
+
+<div id="saida" hidden>
+  <video id="ver" controls playsinline></video>
+  <p id="saidaInfo">Gravação pronta. O arquivo tem só a câmera e o som: o texto e os botões não aparecem nele.</p>
+  <div class="grupo">
+    <button id="salvar" class="forte">Salvar vídeo</button>
+    <button id="abrirVideo">Abrir o vídeo</button>
+    <button id="descartar">Gravar de novo</button>
+  </div>
+</div>
+
+<script>
+// Beleza: tratamento do rosto ao vivo (WebGL) com os pontos do rosto do MediaPipe.
+// Tudo acontece no próprio celular: nenhuma imagem sai do aparelho.
+window.Beleza = (() => {
+  const guarda = {get(k,d){try{const v=localStorage.getItem('tpb-'+k);return v===null?d:v}catch(e){return d}}, set(k,v){try{localStorage.setItem('tpb-'+k,v)}catch(e){}}};
+  const PADRAO = {pele:55, luz:35, quente:20, afinar:25, dentes:50, olhos:40, labios:20, sobrancelha:25, ligado:1};
+  const cfg = {}; for(const k in PADRAO) cfg[k] = +guarda.get(k, PADRAO[k]);
+  let comparar = false;
+
+  const canvas = document.createElement('canvas'); canvas.id = 'gl';
+  let gl = null, prog = null, tex = null, U = {}, video = null, rodando = false, falhou = false;
+  let marcador = null, carregandoMarcador = false, ultimaDeteccao = 0, pontos = null, temRosto = 0, semRostoDesde = 0;
+  let aoQuadro = null;
+
+  const VS = `#version 300 es
+  in vec2 p; out vec2 uv;
+  void main(){ uv = vec2((p.x+1.0)*0.5, 1.0-(p.y+1.0)*0.5); gl_Position = vec4(p,0.0,1.0); }`;
+
+  const FS = `#version 300 es
+  precision highp float;
+  in vec2 uv; out vec4 cor;
+  uniform sampler2D T; uniform vec2 R;
+  uniform float uOn, uHas, uPele, uLuz, uQuente, uAfinar, uDentes, uOlhos, uLabios, uSobr;
+  uniform vec2 fC, fA; uniform float ang;
+  uniform vec2 eL, eR; uniform float eW;
+  uniform vec2 bL, bR;
+  uniform vec2 mC, mA; uniform float mAbre;
+  uniform vec2 lC, lA;
+  uniform vec2 jL, jR; uniform float jRad;
+
+  vec2 gira(vec2 v, float a){ float c=cos(a), s=sin(a); return vec2(c*v.x+s*v.y, -s*v.x+c*v.y); }
+  float elipse(vec2 p, vec2 c, vec2 a, float suave){ float d = length(gira(p-c, ang)/max(a,vec2(1.0))); return 1.0 - smoothstep(1.0-suave, 1.0, d); }
+  float lum(vec3 c){ return dot(c, vec3(0.299,0.587,0.114)); }
+  vec3 pega(vec2 px){ return texture(T, clamp(px/R, vec2(0.0), vec2(1.0))).rgb; }
+
+  void main(){
+    vec2 p = uv*R;
+    // afinar: puxa a mandíbula e as bochechas de baixo para dentro
+    if(uOn>0.5 && uHas>0.5 && uAfinar>0.0){
+      vec2 desl = vec2(0.0);
+      for(int i=0;i<2;i++){
+        vec2 J = i==0 ? jL : jR;
+        vec2 d = p - J; float r = length(d)/jRad;
+        if(r<1.0){ float f = (1.0-r*r); f*=f; vec2 fora = normalize(J - fC); desl += fora * f * uAfinar * jRad * 0.16; }
+      }
+      p += desl;
+    }
+    vec3 o = pega(p);
+    if(uOn<0.5){ cor = vec4(o,1.0); return; }
+
+    // máscaras do rosto
+    float rosto, tracos = 0.0;
+    if(uHas>0.5){
+      rosto = elipse(p, fC, fA, 0.25);
+      vec2 eixoY = gira(vec2(0.0,1.0), -ang);
+      tracos = max(tracos, elipse(p, eL, vec2(eW*0.62, eW*0.34), 0.5));
+      tracos = max(tracos, elipse(p, eR, vec2(eW*0.62, eW*0.34), 0.5));
+      tracos = max(tracos, elipse(p, bL, vec2(eW*0.75, eW*0.22), 0.5));
+      tracos = max(tracos, elipse(p, bR, vec2(eW*0.75, eW*0.22), 0.5));
+      tracos = max(tracos, elipse(p, lC, lA, 0.4));
+    } else {
+      rosto = elipse(p, R*vec2(0.5,0.40), R*vec2(0.24,0.17), 0.45) * 0.6;
+    }
+
+    // pele: filtro que alisa e respeita as bordas
+    vec3 c = o;
+    if(uPele>0.0 && rosto>0.0){
+      float esc = (uHas>0.5 ? fA.x : R.x*0.24) * 0.022;
+      vec3 soma = o; float peso = 1.0;
+      for(int a=0;a<12;a++){
+        float t = float(a)*0.5236;
+        for(int k=1;k<=2;k++){
+          vec2 q = p + vec2(cos(t),sin(t))*esc*(k==1?1.0:2.1);
+          vec3 s = pega(q);
+          float w = exp(-dot(s-o,s-o)/0.012) * (k==1?1.0:0.7);
+          soma += s*w; peso += w;
+        }
+      }
+      vec3 liso = soma/peso;
+      float k = clamp(uPele*0.9, 0.0, 0.9) * rosto * (1.0-tracos);
+      c = mix(o, liso, k);
+      c += (o-liso)*0.12*k; // devolve um pouco de textura para não virar plástico
+    }
+
+    if(uHas>0.5){
+      // olheiras e brilho dos olhos
+      for(int i=0;i<2;i++){
+        vec2 E = i==0 ? eL : eR;
+        vec2 baixo = E + gira(vec2(0.0, eW*0.55), -ang);
+        float m = elipse(p, baixo, vec2(eW*0.62, eW*0.26), 0.7);
+        c = mix(c, c*1.10 + 0.025, uOlhos*m*0.9);
+        float olho = elipse(p, E, vec2(eW*0.5, eW*0.22), 0.4);
+        float claro = smoothstep(0.45,0.75,lum(c));
+        c = mix(c, vec3(lum(c))*1.06, uOlhos*olho*claro*0.35);
+      }
+      // sobrancelhas: preenche escurecendo de leve os fios
+      for(int i=0;i<2;i++){
+        vec2 B = i==0 ? bL : bR;
+        float m = elipse(p, B, vec2(eW*0.72, eW*0.20), 0.6);
+        float escuro = 1.0 - smoothstep(0.25, 0.6, lum(c));
+        c = mix(c, c*0.78, uSobr*m*(0.45+0.55*escuro));
+      }
+      // lábios: um pouco mais de cor e definição
+      float boca = elipse(p, mC, mA, 0.35);
+      float labio = elipse(p, lC, lA, 0.35) * (1.0 - boca*step(0.06, mAbre));
+      vec3 cl = c*vec3(1.07,0.95,0.97);
+      cl = mix(vec3(lum(cl)), cl, 1.25);
+      c = mix(c, cl, uLabios*labio*0.85);
+      // dentes: tira o amarelo e clareia só o que parece dente
+      if(mAbre>0.06){
+        float sat = max(c.r,max(c.g,c.b)) - min(c.r,min(c.g,c.b));
+        float dente = smoothstep(0.30,0.50,lum(c)) * (1.0 - smoothstep(0.18,0.38,sat));
+        float k = uDentes*boca*dente;
+        vec3 cd = c; cd.b = mix(cd.b, (cd.r+cd.g)*0.5, 0.9); cd = mix(cd, vec3(lum(cd)), 0.55)*1.10;
+        c = mix(c, cd, k);
+      }
+    }
+
+    // luz e cor do quadro todo
+    c = pow(max(c,0.0), vec3(1.0 - 0.22*uLuz));
+    c = mix(c, smoothstep(0.0,1.0,c), 0.15*uLuz);
+    c += vec3(0.035, 0.012, -0.03)*uQuente;
+    cor = vec4(clamp(c,0.0,1.0),1.0);
+  }`;
+
+  function compila(tipo, src){ const s=gl.createShader(tipo); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+  function preparaGL(){
+    gl = canvas.getContext('webgl2', {preserveDrawingBuffer:true, premultipliedAlpha:false, alpha:false});
+    if(!gl) throw new Error('sem WebGL2');
+    prog = gl.createProgram();
+    gl.attachShader(prog, compila(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, compila(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(prog); if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+    tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+    for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+    for(const n of ['T','R','uOn','uHas','uPele','uLuz','uQuente','uAfinar','uDentes','uOlhos','uLabios','uSobr','fC','fA','ang','eL','eR','eW','bL','bR','mC','mA','mAbre','lC','lA','jL','jR','jRad']) U[n]=gl.getUniformLocation(prog,n);
+  }
+
+  async function carregaMarcador(){
+    if(marcador || carregandoMarcador) return; carregandoMarcador = true;
+    try{
+      const v = '0.10.14';
+      const mp = await import(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${v}/vision_bundle.mjs`);
+      const files = await mp.FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${v}/wasm`);
+      const opcoes = d => ({baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate:d}, runningMode:'VIDEO', numFaces:1});
+      try{ marcador = await mp.FaceLandmarker.createFromOptions(files, opcoes('GPU')); }
+      catch(e){ marcador = await mp.FaceLandmarker.createFromOptions(files, opcoes('CPU')); }
+      window.dispatchEvent(new CustomEvent('beleza-pronta'));
+    }catch(e){ console.warn('marcador', e); window.dispatchEvent(new CustomEvent('beleza-aviso',{detail:'Sem os pontos do rosto: ficam só pele, luz e cor.'})); }
+    carregandoMarcador = false;
+  }
+
+  const ema = (a,b,t)=> a===null ? b : a + (b-a)*t;
+  function atualizaPontos(lm, W, H){
+    const P = i => [lm[i].x*W, lm[i].y*H];
+    const novo = {};
+    const mid = (a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2], dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+    const topo=P(10), queixo=P(152), esq=P(234), dir=P(454);
+    const olhoE = mid(P(33),P(133)), olhoD = mid(P(362),P(263));
+    novo.ang = Math.atan2(olhoD[1]-olhoE[1], olhoD[0]-olhoE[0]);
+    novo.fC = mid(topo, queixo); novo.fA = [dist(esq,dir)/2*1.0, dist(topo,queixo)/2*1.08];
+    novo.eL = olhoE; novo.eR = olhoD; novo.eW = (dist(P(33),P(133)) + dist(P(362),P(263)))/2;
+    novo.bL = P(105); novo.bR = P(334);
+    novo.mC = mid(P(13),P(14)); novo.mA = [dist(P(78),P(308))/2*0.92, Math.max(1, dist(P(13),P(14))/2*1.1)];
+    novo.mAbre = dist(P(13),P(14)) / Math.max(1, dist(P(61),P(291)));
+    novo.lC = mid(P(0),P(17)); novo.lA = [dist(P(61),P(291))/2*1.06, dist(P(0),P(17))/2*1.18];
+    const jE = P(172), jD = P(397), cE = P(234), cD = P(454);
+    novo.jL = [jE[0]*0.65+cE[0]*0.35, jE[1]*0.65+cE[1]*0.35];
+    novo.jR = [jD[0]*0.65+cD[0]*0.35, jD[1]*0.65+cD[1]*0.35];
+    novo.jRad = dist(esq,dir)*0.36;
+    if(!pontos){ pontos = novo; return; }
+    for(const k in novo){ const a=pontos[k], b=novo[k]; pontos[k] = Array.isArray(b) ? [ema(a[0],b[0],0.55), ema(a[1],b[1],0.55)] : ema(a,b,0.55); }
+  }
+
+  function render(){
+    const W = video.videoWidth, H = video.videoHeight; if(!W||!H) return;
+    if(canvas.width!==W || canvas.height!==H){ canvas.width=W; canvas.height=H; pontos=null; }
+    const agora = performance.now();
+    if(marcador && agora - ultimaDeteccao > 60){
+      ultimaDeteccao = agora;
+      try{ const r = marcador.detectForVideo(video, agora); const lm = r?.faceLandmarks?.[0];
+        if(lm){ atualizaPontos(lm, W, H); temRosto = 1; semRostoDesde = 0; }
+        else { if(!semRostoDesde) semRostoDesde = agora; if(agora - semRostoDesde > 400) temRosto = 0; } }catch(e){}
+    }
+    gl.viewport(0,0,W,H);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+    gl.uniform1i(U.T,0); gl.uniform2f(U.R,W,H);
+    const on = cfg.ligado && !comparar ? 1 : 0;
+    gl.uniform1f(U.uOn,on); gl.uniform1f(U.uHas, (temRosto && pontos) ? 1 : 0);
+    gl.uniform1f(U.uPele,cfg.pele/100); gl.uniform1f(U.uLuz,cfg.luz/100); gl.uniform1f(U.uQuente,cfg.quente/100);
+    gl.uniform1f(U.uAfinar,cfg.afinar/100); gl.uniform1f(U.uDentes,cfg.dentes/100); gl.uniform1f(U.uOlhos,cfg.olhos/100);
+    gl.uniform1f(U.uLabios,cfg.labios/100); gl.uniform1f(U.uSobr,cfg.sobrancelha/100);
+    if(pontos){ const q=pontos;
+      gl.uniform2f(U.fC,...q.fC); gl.uniform2f(U.fA,...q.fA); gl.uniform1f(U.ang,q.ang);
+      gl.uniform2f(U.eL,...q.eL); gl.uniform2f(U.eR,...q.eR); gl.uniform1f(U.eW,q.eW);
+      gl.uniform2f(U.bL,...q.bL); gl.uniform2f(U.bR,...q.bR);
+      gl.uniform2f(U.mC,...q.mC); gl.uniform2f(U.mA,...q.mA); gl.uniform1f(U.mAbre,q.mAbre);
+      gl.uniform2f(U.lC,...q.lC); gl.uniform2f(U.lA,...q.lA);
+      gl.uniform2f(U.jL,...q.jL); gl.uniform2f(U.jR,...q.jR); gl.uniform1f(U.jRad,q.jRad);
+    }
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    if(aoQuadro) try{ aoQuadro(); }catch(e){}
+  }
+
+  function laco(){
+    if(!rodando || !video) return;
+    render();
+    if(video.requestVideoFrameCallback) video.requestVideoFrameCallback(laco); else requestAnimationFrame(laco);
+  }
+
+  return {
+    canvas, cfg, PADRAO,
+    ok: () => !falhou && !!gl,
+    inicia(v){
+      video = v;
+      if(falhou) return false;
+      try{ if(!gl) preparaGL(); }catch(e){ falhou = true; console.warn(e); window.dispatchEvent(new CustomEvent('beleza-aviso',{detail:'Este aparelho não roda o tratamento ao vivo.'})); return false; }
+      carregaMarcador();
+      if(!rodando){ rodando = true; laco(); }
+      return true;
+    },
+    para(){ rodando = false; },
+    muda(k, v){ cfg[k] = +v; guarda.set(k, cfg[k]); },
+    zera(){ for(const k in PADRAO){ cfg[k]=PADRAO[k]; guarda.set(k,PADRAO[k]); } },
+    compara(b){ comparar = !!b; },
+    aoQuadro(fn){ aoQuadro = fn; },
+    temRosto: () => !!temRosto,
+    _fixa(q){ pontos=q; temRosto=1; marcador=null; carregandoMarcador=true; }
+  };
+})();
+</script>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const body = document.body, texto = $('texto'), janela = $('janela');
+const EXEMPLO = `Exemplo para testar (troque em Roteiro).
+
+Mentiras que te contaram sobre o Candomblé: só se inicia quem vira no santo.
+
+Iniciar-se é raspar o seu Orixá e se tornar um ser humano completo, em aliança com ele e com toda a sua ancestralidade.
+
+Ninguém precisa virar, entrar em transe ou em possessão espiritual para ser iniciado.
+
+Você é iniciado porque passou por todas as ritualísticas que precisava passar, não por ter virado ou não no santo.
+
+Se você se iniciou e nunca entrou em transe, fique tranquilo: você não tem menos nem mais Orixá do que ninguém.
+
+Asé.`;
+const guarda = {get(k,d){try{const v=localStorage.getItem('tp-'+k);return v===null?d:v}catch(e){return d}}, set(k,v){try{localStorage.setItem('tp-'+k,v)}catch(e){}}};
+
+let y = 0, lendo = false, ultimo = 0, wake = null;
+const st = {vel:+guarda.get('vel',60), fs:+guarda.get('fs',44), mg:+guarda.get('mg',8), modo:guarda.get('modo', Math.min(screen.width,screen.height) < 700 ? 'lente' : 'tela'), espelho:guarda.get('espelho','0')==='1'};
+// roteiro vindo do Criador: link com #roteiro=texto (codificado)
+(function(){ try{ const h=location.hash; if(h.startsWith('#roteiro=')){ const t=decodeURIComponent(h.slice(9)).trim(); if(t){ guarda.set('roteiro',t); } history.replaceState(null,'',location.pathname+location.search); } }catch(e){} })();
+texto.textContent = guarda.get('roteiro', EXEMPLO);
+
+function aplica(){
+  $('vel').value = st.vel; $('fs').value = st.fs; $('mg').value = st.mg; $('modo').value = st.modo;
+  document.documentElement.style.setProperty('--fs', st.fs+'px');
+  document.documentElement.style.setProperty('--margem', st.mg+'%');
+  body.classList.toggle('lente', st.modo==='lente');
+  body.classList.toggle('espelho', st.espelho);
+  $('espelho').setAttribute('aria-pressed', st.espelho);
+  $('espelho').textContent = st.espelho ? 'Espelhado' : 'Espelhar';
+  desenha();
+}
+function desenha(){ texto.style.transform = `translateY(${-y}px)` + (st.espelho ? ' scaleX(-1)' : ''); }
+function inicioY(){ const g = $('guia').offsetTop; return -g; }
+function avisa(t, ms=2600){ const a=$('aviso'); a.textContent=t; a.hidden=false; clearTimeout(avisa.t); avisa.t=setTimeout(()=>a.hidden=true, ms); }
+
+function passo(t){
+  if(!lendo) return;
+  const dt = Math.min(0.1,(t-ultimo)/1000); ultimo = t;
+  y += st.vel*dt;
+  const fim = texto.scrollHeight - $('guia').offsetTop;
+  if(y >= fim){ y = fim; pausa(); avisa('Fim do roteiro'); }
+  desenha(); requestAnimationFrame(passo);
+}
+async function toca(){
+  if(lendo) return; lendo = true; body.classList.add('lendo'); $('play').textContent='Pausar';
+  try{ wake = await navigator.wakeLock?.request('screen'); }catch(e){}
+  ultimo = performance.now(); requestAnimationFrame(passo);
+}
+function pausa(){ lendo = false; body.classList.remove('lendo'); $('play').textContent='Continuar'; try{wake?.release()}catch(e){} wake=null; }
+function alterna(){ lendo ? pausa() : toca(); }
+
+// toque: iniciar ou pausar; arrastar: ajustar a posição
+let toqueY=null, moveu=false;
+$('palco').addEventListener('pointerdown', e=>{ toqueY=e.clientY; moveu=false; });
+$('palco').addEventListener('pointermove', e=>{ if(toqueY===null) return; const d=e.clientY-toqueY; if(Math.abs(d)>6){ moveu=true; y=Math.max(inicioY(), y-d); toqueY=e.clientY; desenha(); }});
+$('palco').addEventListener('pointerup', ()=>{ if(!moveu) alterna(); toqueY=null; });
+$('palco').addEventListener('wheel', e=>{ y=Math.max(inicioY(), y+e.deltaY); desenha(); }, {passive:true});
+document.addEventListener('keydown', e=>{
+  if($('editor').hidden===false) return;
+  if(e.code==='Space'){ e.preventDefault(); alterna(); }
+  if(e.code==='ArrowUp'){ st.vel=Math.min(200,st.vel+5); aplica(); avisa('Velocidade '+st.vel); }
+  if(e.code==='ArrowDown'){ st.vel=Math.max(10,st.vel-5); aplica(); avisa('Velocidade '+st.vel); }
+});
+
+$('play').onclick = alterna;
+$('topo').onclick = ()=>{ pausa(); y=inicioY(); desenha(); $('play').textContent='Iniciar'; };
+$('vel').oninput = e=>{ st.vel=+e.target.value; guarda.set('vel',st.vel); };
+$('fs').oninput = e=>{ st.fs=+e.target.value; guarda.set('fs',st.fs); aplica(); };
+$('mg').oninput = e=>{ st.mg=+e.target.value; guarda.set('mg',st.mg); aplica(); };
+$('modo').onchange = e=>{ st.modo=e.target.value; guarda.set('modo',st.modo); aplica(); y=inicioY(); desenha(); $('gravar').hidden = !(podeCamera && st.modo==='lente'); if(st.modo==='lente') ligaCamera(); };
+$('espelho').onclick = ()=>{ st.espelho=!st.espelho; guarda.set('espelho',st.espelho?'1':'0'); aplica(); };
+$('editar').onclick = ()=>{ pausa(); $('roteiro').value = texto.textContent; $('editor').hidden=false; $('roteiro').focus(); };
+$('pronto').onclick = ()=>{ const t=$('roteiro').value.trim()||EXEMPLO; texto.textContent=t; guarda.set('roteiro',t); $('editor').hidden=true; y=inicioY(); desenha(); $('play').textContent='Iniciar'; };
+$('arquivo').onchange = e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('roteiro').value=String(r.result).replace(/^#+\s*/gm,''); }; r.readAsText(f); };
+
+// câmera e gravação: só onde o navegador deixa (página própria em https; dentro do Claude é bloqueado)
+let fonteAtual=null, finalizado=true, finaliza=()=>{}, mic=null, recortar=false, laco=null, camInfo='', stream=null, rec=null, partes=[], blob=null, t0=0, relogio=null;
+const dentroDoClaude = (()=>{ try{ return window.self !== window.top; }catch(e){ return true; } })();
+const podeCamera = !dentroDoClaude && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+async function ligaCamera(){
+  if(stream || !podeCamera) { if(!podeCamera && st.modo==='lente') avisa('Aqui não dá para gravar: abra a versão da página no Safari (ver o passo a passo).', 4200); return !!stream; }
+  try{
+    const empe = window.innerHeight > window.innerWidth;
+    const tentativas = [
+      {width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9/16}},
+      {width:{ideal:1920}, height:{ideal:1080}},
+      {aspectRatio:{exact:9/16}}
+    ];
+    for(const t of tentativas){
+      try{ stream = await navigator.mediaDevices.getUserMedia({video:Object.assign({facingMode:'user', frameRate:{ideal:30}}, t), audio:true}); }catch(e){ if(e.name==='NotAllowedError') throw e; continue; }
+      const c = stream.getVideoTracks()[0]?.getSettings?.() || {};
+      if(!empe || !c.width || c.height >= c.width) break;
+      if(t === tentativas[tentativas.length-1]) break;
+      stream.getTracks().forEach(k=>k.stop()); stream = null;
+    }
+    if(!stream) throw new Error('não consegui abrir a câmera');
+    // a câmera abre junto com o microfone (assim o iPhone não dá zoom); o microfone fica pausado até apertar Gravar
+    stream.getAudioTracks().forEach(k=>{ k.enabled=false; });
+    const v=$('cam'); v.srcObject=stream; v.hidden=false; await v.play().catch(()=>{});
+    if(Beleza.inicia(v)){ if(!Beleza.canvas.parentNode) $('glLugar').replaceWith(Beleza.canvas); body.classList.add('comgl'); }
+    const cfg = stream.getVideoTracks()[0]?.getSettings?.() || {};
+    // se a câmera ainda vier deitada com o celular em pé, a gravação recorta o centro em pé (9:16)
+    recortar = empe && cfg.width && cfg.width > cfg.height;
+    camInfo = `${cfg.width||'?'} x ${cfg.height||'?'}, ${Math.round(cfg.frameRate||0)||'?'} quadros/s`;
+    avisa('Câmera frontal ligada: ' + camInfo, 4000);
+    $('gravar').hidden=false; return true;
+  }catch(e){ avisa('Câmera não liberada: '+(e.name==='NotAllowedError'?'permita câmera e microfone nos ajustes do Safari para este site.':e.message), 5000); return false; }
+}
+function tipo(){ for(const t of ['video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm']) if(MediaRecorder.isTypeSupported?.(t)) return t; return ''; }
+async function gravar(){
+  if(rec && rec.state==='recording'){
+    // parar: encerra na hora; se o iPhone demorar a fechar o arquivo, fecha com o que já foi gravado
+    clearInterval(relogio); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
+    try{ rec.requestData?.(); }catch(e){}
+    try{ rec.stop(); }catch(e){}
+    setTimeout(()=>{ try{ fonteAtual && fonteAtual.getVideoTracks().forEach(k=>k.stop()); }catch(e){} }, 400);
+    setTimeout(()=>{ if(!finalizado) finaliza(); }, 6000);
+    return;
+  }
+  if(!await ligaCamera()) return;
+  partes=[]; const mt=tipo();
+  // o microfone só liga na hora de gravar e desliga quando a gravação para
+  mic = null;
+  const somAudio = location.search.includes('semaudio') ? [] : stream.getAudioTracks();
+  somAudio.forEach(k=>{ k.enabled=true; });
+  let fonte = new MediaStream([...stream.getVideoTracks(), ...somAudio]);
+  // o arquivo sai igual ao que você vê na tela (espelhado, como selfie); com ?semespelho no link sai sem espelhar
+  const espelhaArquivo = !location.search.includes('semespelho');
+  if(recortar || espelhaArquivo){
+    const v=$('cam'), cv=document.createElement('canvas');
+    const vw0=v.videoWidth||1080, vh0=v.videoHeight||1920;
+    if(recortar){ cv.width=1080; cv.height=1920; } else { cv.width=vw0; cv.height=vh0; }
+    const g=cv.getContext('2d');
+    const comBeleza = Beleza.ok() && body.classList.contains('comgl');
+    const origem = comBeleza ? Beleza.canvas : v;
+    const desenhaQuadro=()=>{ const vw=v.videoWidth, vh=v.videoHeight; if(!vw||!vh) return;
+      const w = recortar ? vh*9/16 : vw, sx = recortar ? (vw-w)/2 : 0;
+      g.save(); if(espelhaArquivo){ g.translate(cv.width,0); g.scale(-1,1); }
+      g.drawImage(origem,sx,0,w,vh,0,0,cv.width,cv.height); g.restore(); };
+    desenhaQuadro(); clearInterval(laco);
+    // com beleza: cada quadro tratado vai direto para o arquivo
+    if(comBeleza){ Beleza.aoQuadro(()=>{ if(!finalizado) desenhaQuadro(); }); }
+    // desenha cada quadro que a câmera entrega (mais fluido); sem esse recurso, cai no relógio de 30 por segundo
+    else if(v.requestVideoFrameCallback){ const passo=()=>{ desenhaQuadro(); if(!finalizado) v.requestVideoFrameCallback(passo); }; v.requestVideoFrameCallback(passo); }
+    else { laco=setInterval(desenhaQuadro, 1000/30); }
+    fonte = cv.captureStream(30); somAudio.forEach(k=>fonte.addTrack(k));
+  }
+  rec = new MediaRecorder(fonte, mt?{mimeType:mt, videoBitsPerSecond:6_000_000}:{});
+  rec.ondataavailable = e=>{ if(e.data.size) partes.push(e.data); };
+  fonteAtual = fonte; finalizado = false;
+  finaliza = ()=>{
+    if(finalizado) return; finalizado = true; Beleza.aoQuadro(null);
+    // terminou de gravar: desliga câmera e microfone de vez; eles voltam quando você sai da tela de salvar
+    setTimeout(()=>{ if(stream){ stream.getTracks().forEach(k=>k.stop()); stream=null; } }, 300);
+    clearInterval(relogio); clearInterval(laco); $('ponto').hidden=true; $('gravar').textContent='Gravar'; pausa();
+    blob = new Blob(partes, {type: rec.mimeType || mt || 'video/mp4'});
+    $('ver').src = URL.createObjectURL(blob);
+    $('saidaInfo').textContent = `Gravação pronta (${(blob.size/1e6).toFixed(1)} MB, ${blob.type.split(';')[0]}, câmera ${camInfo}). O arquivo tem só a câmera e o som: o texto e os botões não aparecem nele.`;
+    $('ver').onloadedmetadata = ()=>{ $('saidaInfo').textContent += ` Resolução do arquivo: ${$('ver').videoWidth} x ${$('ver').videoHeight}.`; };
+    $('saida').hidden=false;
+  };
+  rec.onstop = ()=>finaliza();
+  // contagem de 3 s antes de gravar e rolar
+  const c=$('contagem'); c.hidden=false;
+  for(const n of [3,2,1]){ c.textContent=n; await new Promise(r=>setTimeout(r,800)); }
+  c.hidden=true;
+  rec.start(1000); t0=Date.now(); $('ponto').hidden=false; $('gravar').textContent='Parar';
+  relogio=setInterval(()=>{ const s=Math.floor((Date.now()-t0)/1000); $('tempo').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); },500);
+  toca();
+}
+$('gravar').onclick = gravar;
+// durante a gravação a barra some; tocar na tela pausa só a rolagem. Botão Parar fica no canto.
+$('ponto').addEventListener('click', ()=>{ if(rec?.state==='recording') rec.stop(); });
+$('ponto').style.cursor='pointer'; $('ponto').title='Parar gravação';
+function fechaSaida(msg){ const v=$('ver'); try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} $('saida').hidden=true; blob=null; y=inicioY(); desenha(); if(msg) avisa(msg, 2500); if(st.modo==='lente' && podeCamera) ligaCamera(); }
+$('descartar').onclick = ()=>fechaSaida();
+$('salvar').onclick = async ()=>{
+  if(!blob){ avisa('A gravação não está mais aqui. Grave de novo.', 4000); return; }
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const nome = 'gravacao-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'-') + '.' + ext;
+  const f = new File([blob], nome, {type: blob.type.split(';')[0]});
+  if(navigator.canShare?.({files:[f]})){
+    try{ await navigator.share({files:[f]}); $('saidaInfo').textContent='Enviado. Confira no app Fotos ou em Arquivos. Se não estiver lá, toque em Abrir o vídeo. A gravação continua aqui até você tocar em Gravar de novo.'; return; }
+    catch(e){ if(e.name==='AbortError') return; $('saidaInfo').textContent='O iPhone não conseguiu salvar ('+e.name+': '+e.message+'). Toque em Abrir o vídeo e salve pelo botão de compartilhar do player. A gravação continua aqui.'; return; }
+  }
+  // sem a tela de compartilhar: baixa o arquivo e NÃO apaga a gravação, para poder tentar de novo
+  const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+  $('saidaInfo').textContent='Baixando para Arquivos, pasta Downloads. Se não aparecer, toque em Abrir o vídeo. A gravação continua aqui até você tocar em Gravar de novo.';
+};
+$('abrirVideo').onclick = ()=>{
+  if(!blob){ avisa('A gravação não está mais aqui. Grave de novo.', 4000); return; }
+  const u=URL.createObjectURL(blob); const w=window.open(u,'_blank');
+  if(!w) location.href=u;
+  avisa('No vídeo que abriu, toque no botão de compartilhar e em Salvar vídeo.', 6000);
+};
+
+// seguir a voz (só onde o navegador tem reconhecimento de fala): avança quando você fala, para quando você para
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if(SR){
+  $('voz').hidden=false; let sr=null, ativo=false, ultimaFala=0;
+  $('voz').onclick = ()=>{
+    ativo=!ativo; $('voz').setAttribute('aria-pressed',ativo); $('voz').textContent = ativo?'Voz ligada':'Seguir minha voz';
+    if(ativo){ try{ sr=new SR(); sr.lang='pt-BR'; sr.continuous=true; sr.interimResults=true;
+      sr.onresult=()=>{ ultimaFala=Date.now(); if(!lendo) toca(); };
+      sr.onend=()=>{ if(ativo) try{sr.start()}catch(e){} };
+      sr.start();
+      (function vigia(){ if(!ativo) return; if(lendo && Date.now()-ultimaFala>1800) pausa(); setTimeout(vigia,300); })();
+    }catch(e){ avisa('Reconhecimento de voz indisponível aqui.'); ativo=false; } }
+    else { try{sr?.stop()}catch(e){} }
+  };
+}
+
+// painel de beleza
+const ROT = {pele:'Pele lisa', luz:'Luz no rosto', quente:'Cor mais quente', afinar:'Afinar o rosto', dentes:'Dentes brancos', olhos:'Olheiras e olhos', labios:'Preencher lábios', sobrancelha:'Preencher sobrancelhas'};
+for(const k of Object.keys(ROT)){
+  const d=document.createElement('div'); d.className='ctl';
+  d.innerHTML=`<span><label for="b_${k}">${ROT[k]}</label><b id="bv_${k}"></b></span><input id="b_${k}" type="range" min="0" max="100">`;
+  $('painelBeleza').insertBefore(d, null);
+  const r=d.querySelector('input'); r.value=Beleza.cfg[k]; d.querySelector('b').textContent=Beleza.cfg[k];
+  r.oninput=e=>{ Beleza.muda(k,e.target.value); d.querySelector('b').textContent=e.target.value; };
+}
+function atualizaLigado(){ $('bLigado').textContent = Beleza.cfg.ligado ? 'Ligado' : 'Desligado'; $('bLigado').setAttribute('aria-pressed', !!Beleza.cfg.ligado); $('beleza').textContent = Beleza.cfg.ligado ? 'Beleza' : 'Beleza (desligada)'; }
+$('beleza').onclick = ()=>{ pausa(); $('painelBeleza').hidden=false; if(!stream && podeCamera) ligaCamera(); };
+$('bFechar').onclick = ()=>{ $('painelBeleza').hidden=true; };
+$('bLigado').onclick = ()=>{ Beleza.muda('ligado', Beleza.cfg.ligado?0:1); atualizaLigado(); };
+$('bZerar').onclick = ()=>{ Beleza.zera(); for(const k of Object.keys(ROT)){ $('b_'+k).value=Beleza.cfg[k]; $('bv_'+k).textContent=Beleza.cfg[k]; } atualizaLigado(); };
+const segura = b=>e=>{ e.preventDefault(); Beleza.compara(b); };
+$('bAntes').addEventListener('pointerdown', segura(true)); ['pointerup','pointerleave','pointercancel'].forEach(t=>$('bAntes').addEventListener(t, segura(false)));
+window.addEventListener('beleza-aviso', e=>avisa(e.detail, 4500));
+window.addEventListener('beleza-pronta', ()=>avisa('Beleza pronta: rosto reconhecido ao vivo.', 3000));
+atualizaLigado();
+if(podeCamera) $('gravar').hidden = st.modo!=='lente';
+aplica(); y=inicioY(); desenha();
+if(st.modo==='lente' && podeCamera) ligaCamera();
+})();
+
+// ao sair da página ou trocar de app, desliga câmera e microfone; ao voltar, religa a câmera
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    if(rec && rec.state==='recording') return;
+    if(mic){ mic.getTracks().forEach(k=>k.stop()); mic=null; }
+    if(stream){ stream.getTracks().forEach(k=>k.stop()); stream=null; }
+  } else if(st.modo==='lente' && podeCamera){ ligaCamera(); }
+});
+window.addEventListener('pagehide', ()=>{ [mic,stream].forEach(x=>x&&x.getTracks().forEach(k=>k.stop())); });
+</script>
+
+</body></html>
